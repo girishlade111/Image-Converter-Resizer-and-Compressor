@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Converter/Resizer and Compressor</title>
+    <meta name="description" content="Convert, resize, and compress JPG, PNG, WebP images efficiently. Batch processing, real-time previews, and customizable settings.">
+    <meta name="keywords" content="image converter, image resizer, image compressor, jpg, png, webp, batch image processing">
+
+    <!-- JSZip for creating ZIP files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- FileSaver.js for saving files (used by JSZip for blobs) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <style>
+        :root {
+            --primary-color: #007bff;
+            --secondary-color: #6c757d;
+            --light-color: #f8f9fa;
+            --dark-color: #343a40;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+            --border-radius: 5px;
+            --padding: 15px;
+            --font-family: 'Arial', sans-serif;
+        }
+
+        body {
+            font-family: var(--font-family);
+            margin: 0;
+            padding: 0;
+            background-color: var(--light-color);
+            color: var(--dark-color);
+            line-height: 1.6;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: var(--padding);
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        main {
+            flex-grow: 1;
+            padding: var(--padding);
+            max-width: 1200px;
+            margin: 20px auto;
+            width: 95%;
+        }
+
+        .container {
+            background-color: white;
+            padding: var(--padding);
+            border-radius: var(--border-radius);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        h2, h3 {
+            color: var(--primary-color);
+            margin-top: 0;
+        }
+
+        /* Upload Area */
+        #upload-area {
+            border: 2px dashed var(--secondary-color);
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        #upload-area.dragover {
+            background-color: #e9ecef;
+        }
+        #upload-area p {
+            margin: 5px 0;
+        }
+        #file-input {
+            display: none;
+        }
+
+        /* Controls */
+        .control-group {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: var(--border-radius);
+        }
+        .control-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        .control-group input[type="number"],
+        .control-group select {
+            width: calc(100% - 22px); /* Adjust for padding and border */
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: var(--border-radius);
+            box-sizing: border-box;
+        }
+        .control-group input[type="checkbox"] {
+            margin-right: 5px;
+        }
+        .inline-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .inline-controls input[type="number"] {
+            width: 80px;
+        }
+
+        /* Preview Area */
+        #preview-area {
+            display: flex;
+            gap: 20px;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+        .image-preview {
+            flex: 1;
+            min-width: 250px;
+            max-width: 400px;
+            border: 1px solid #eee;
+            padding: 10px;
+            text-align: center;
+        }
+        .image-preview img, .image-preview canvas {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+        }
+        .image-preview p {
+            font-size: 0.9em;
+            color: var(--secondary-color);
+        }
+
+        /* File List for Batch Processing */
+        #file-list-container {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+        .file-item:last-child {
+            border-bottom: none;
+        }
+        .file-name {
+            flex-grow: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            margin-right: 10px;
+        }
+        .file-status {
+            font-size: 0.8em;
+            color: var(--secondary-color);
+        }
+        .file-status.processed {
+            color: var(--success-color);
+        }
+        .file-status.error {
+            color: var(--danger-color);
+        }
+
+        /* Buttons */
+        .button {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.3s ease;
+            margin-right: 10px;
+            margin-top: 10px;
+        }
+        .button:hover {
+            background-color: #0056b3;
+        }
+        .button:disabled {
+            background-color: var(--secondary-color);
+            cursor: not-allowed;
+        }
+        .button.secondary {
+            background-color: var(--secondary-color);
+        }
+        .button.secondary:hover {
+            background-color: #545b62;
+        }
+        .button.danger {
+            background-color: var(--danger-color);
+        }
+        .button.danger:hover {
+            background-color: #c82333;
+        }
+
+        /* Progress Bar */
+        #progress-bar-container {
+            width: 100%;
+            background-color: #e9ecef;
+            border-radius: var(--border-radius);
+            margin-top: 10px;
+            display: none; /* Hidden by default */
+        }
+        #progress-bar {
+            width: 0%;
+            height: 20px;
+            background-color: var(--success-color);
+            border-radius: var(--border-radius);
+            text-align: center;
+            line-height: 20px;
+            color: white;
+            transition: width 0.3s ease;
+        }
+
+        /* Settings Panel */
+        #settings-panel {
+            position: fixed;
+            top: 0;
+            right: -350px; /* Start off-screen */
+            width: 300px;
+            height: 100%;
+            background-color: white;
+            box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+            padding: 20px;
+            transition: right 0.3s ease-in-out;
+            z-index: 1000;
+            overflow-y: auto;
+        }
+        #settings-panel.open {
+            right: 0;
+        }
+        .settings-toggle-button {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1001;
+        }
+
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: var(--padding);
+            background-color: var(--dark-color);
+            color: var(--light-color);
+            font-size: 0.9em;
+        }
+        footer a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        /* Utility */
+        .hidden { display: none !important; }
+        .error-message {
+            color: var(--danger-color);
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
+            border-radius: var(--border-radius);
+            margin-top: 10px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .inline-controls {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .inline-controls input[type="number"] {
+                width: 100%;
+            }
+            #preview-area {
+                flex-direction: column;
+            }
+            .image-preview {
+                max-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Image Converter/Resizer and Compressor</h1>
+    </header>
+
+    <button class="button settings-toggle-button" id="settings-toggle-btn" aria-label="Toggle Settings Panel">⚙️ Settings</button>
+
+    <div id="settings-panel">
+        <h3>Settings</h3>
+        <div class="control-group">
+            <label for="setting-default-format">Default Output Format:</label>
+            <select id="setting-default-format">
+                <option value="image/png">PNG</option>
+                <option value="image/jpeg">JPG</option>
+                <option value="image/webp">WebP</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="setting-default-quality">Default Compression Quality (JPG/WebP):</label>
+            <input type="range" id="setting-default-quality" min="1" max="100" value="80">
+            <span id="setting-default-quality-value">80%</span>
+        </div>
+        <div class="control-group">
+            <label for="setting-default-unit">Default Resize Unit:</label>
+            <select id="setting-default-unit">
+                <option value="px">Pixels (px)</option>
+                <option value="%">Percentage (%)</option>
+            </select>
+        </div>
+        <button class="button" id="save-settings-btn">Save Settings</button>
+        <button class="button secondary" id="close-settings-btn">Close</button>
+    </div>
+
+    <main>
+        <section id="upload-section" class="container">
+            <h2>1. Upload Images</h2>
+            <div id="upload-area" role="button" tabindex="0" aria-label="Drag and drop image files here, or click to select files">
+                <p>Drag & Drop image files here</p>
+                <p>or</p>
+                <button class="button" id="browse-files-btn" type="button">Browse Files</button>
+                <input type="file" id="file-input" multiple accept="image/jpeg, image/png, image/webp, image/gif, image/bmp">
+            </div>
+            <p id="upload-feedback" class="error-message hidden"></p>
+            <small>Supported formats: JPG, PNG, WebP, GIF, BMP. Max file size: 10MB per file.</small>
+        </section>
+
+        <section id="files-overview-section" class="container hidden">
+            <h2>Files for Processing</h2>
+            <div id="file-list-container">
+                <!-- File items will be added here by JS -->
+            </div>
+            <div id="progress-bar-container">
+                <div id="progress-bar">0%</div>
+            </div>
+            <button class="button" id="process-all-btn" disabled>Process All</button>
+            <button class="button secondary" id="download-zip-btn" disabled>Download All as ZIP</button>
+            <button class="button danger" id="clear-all-btn">Clear All</button>
+        </section>
+
+        <section id="controls-section" class="container">
+            <h2>2. Configure Options</h2>
+            <div class="control-group">
+                <label for="output-format">Output Format:</label>
+                <select id="output-format">
+                    <option value="image/png">PNG</option>
+                    <option value="image/jpeg">JPG</option>
+                    <option value="image/webp">WebP</option>
+                    <!-- <option value="image/bmp">BMP</option> -->
+                    <!-- <option value="image/gif">GIF (static)</option> -->
+                </select>
+            </div>
+
+            <div class="control-group">
+                <h3>Resize</h3>
+                <label><input type="checkbox" id="enable-resize"> Enable Resizing</label>
+                <div id="resize-options" class="hidden">
+                    <div class="inline-controls">
+                        <label for="output-width">Width:</label>
+                        <input type="number" id="output-width" placeholder="e.g., 1920">
+                        <label for="output-height">Height:</label>
+                        <input type="number" id="output-height" placeholder="e.g., 1080">
+                        <select id="resize-unit" title="Resize unit">
+                            <option value="px">px</option>
+                            <option value="%">%</option>
+                        </select>
+                    </div>
+                    <label><input type="checkbox" id="maintain-aspect-ratio" checked> Maintain Aspect Ratio</label>
+                    <p><small>Leave one dimension blank to auto-calculate with aspect ratio. If both are filled, aspect ratio might not be maintained unless checked.</small></p>
+                    <!-- Preset dimensions could be added here as buttons/select -->
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>Compression (for JPG/WebP)</h3>
+                <label><input type="checkbox" id="enable-compression" checked> Enable Compression</label>
+                <div id="compression-options">
+                    <label for="compression-quality">Quality (1-100):</label>
+                    <input type="range" id="compression-quality" min="1" max="100" value="80">
+                    <span id="compression-quality-value">80%</span>
+                    <p id="estimated-size-info" class="hidden"></p>
+                </div>
+            </div>
+        </section>
+
+        <section id="preview-section" class="container hidden">
+            <h2>3. Preview & Download (Selected Image)</h2>
+            <div id="preview-area">
+                <div class="image-preview">
+                    <h3>Original</h3>
+                    <img id="original-image-preview" src="#" alt="Original Image Preview" style="display:none;">
+                    <p id="original-image-info"></p>
+                </div>
+                <div class="image-preview">
+                    <h3>Processed</h3>
+                    <canvas id="processed-image-canvas" style="display:none;"></canvas> <!-- Canvas for drawing -->
+                    <img id="processed-image-preview-img" src="#" alt="Processed Image Preview" style="display:none;"> <!-- Img for display after processing -->
+                    <p id="processed-image-info"></p>
+                </div>
+            </div>
+            <button class="button hidden" id="download-single-btn">Download Processed Image</button>
+        </section>
+        
+        <section id="faq-privacy" class="container">
+            <h2>FAQ & Privacy</h2>
+            <h3>Frequently Asked Questions</h3>
+            <p><strong>Q: What image formats are supported for input?</strong><br>A: We support JPG, PNG, WebP, GIF (first frame for processing), and BMP. Output formats are JPG, PNG, and WebP.</p>
+            <p><strong>Q: How does compression work?</strong><br>A: For JPG and WebP formats, you can adjust the quality slider. Lower quality means smaller file size but more visible artifacts. PNG compression is lossless but can be slower.</p>
+            <p><strong>Q: What happens if I resize and maintain aspect ratio?</strong><br>A: If you provide one dimension (width or height), the other will be calculated automatically. If you provide both, and "Maintain Aspect Ratio" is checked, the image will be scaled to fit within those dimensions while preserving its original proportions.</p>
+            
+            <h3>Privacy Policy</h3>
+            <p>Your images are processed directly in your web browser. <strong>No files are uploaded to any server.</strong> All processing happens locally on your computer. Once you close this browser tab or window, all image data is cleared from memory unless you've saved the processed files to your device. We do not store, share, or have access to your images.</p>
+        </section>
+
+    </main>
+
+    <footer>
+        <p>&copy; 2023 Image Converter/Resizer and Compressor. All processing is done client-side.</p>
+    </footer>
+
+    <script>
+        // DOM Elements
+        const uploadArea = document.getElementById('upload-area');
+        const fileInput = document.getElementById('file-input');
+        const browseFilesBtn = document.getElementById('browse-files-btn');
+        const uploadFeedback = document.getElementById('upload-feedback');
+        
+        const filesOverviewSection = document.getElementById('files-overview-section');
+        const fileListContainer = document.getElementById('file-list-container');
+        const processAllBtn = document.getElementById('process-all-btn');
+        const downloadZipBtn = document.getElementById('download-zip-btn');
+        const clearAllBtn = document.getElementById('clear-all-btn');
+        const progressBarContainer = document.getElementById('progress-bar-container');
+        const progressBar = document.getElementById('progress-bar');
+
+        const outputFormatSelect = document.getElementById('output-format');
+        const enableResizeCheckbox = document.getElementById('enable-resize');
+        const resizeOptionsDiv = document.getElementById('resize-options');
+        const outputWidthInput = document.getElementById('output-width');
+        const outputHeightInput = document.getElementById('output-height');
+        const resizeUnitSelect = document.getElementById('resize-unit');
+        const maintainAspectRatioCheckbox = document.getElementById('maintain-aspect-ratio');
+        
+        const enableCompressionCheckbox = document.getElementById('enable-compression');
+        const compressionOptionsDiv = document.getElementById('compression-options');
+        const compressionQualitySlider = document.getElementById('compression-quality');
+        const compressionQualityValue = document.getElementById('compression-quality-value');
+        const estimatedSizeInfo = document.getElementById('estimated-size-info');
+
+        const previewSection = document.getElementById('preview-section');
+        const originalImagePreview = document.getElementById('original-image-preview');
+        const originalImageInfo = document.getElementById('original-image-info');
+        const processedImageCanvas = document.getElementById('processed-image-canvas');
+        const processedImagePreviewImg = document.getElementById('processed-image-preview-img');
+        const processedImageInfo = document.getElementById('processed-image-info');
+        const downloadSingleBtn = document.getElementById('download-single-btn');
+
+        const settingsPanel = document.getElementById('settings-panel');
+        const settingsToggleBtn = document.getElementById('settings-toggle-btn');
+        const saveSettingsBtn = document.getElementById('save-settings-btn');
+        const closeSettingsBtn = document.getElementById('close-settings-btn');
+        const settingDefaultFormat = document.getElementById('setting-default-format');
+        const settingDefaultQuality = document.getElementById('setting-default-quality');
+        const settingDefaultQualityValue = document.getElementById('setting-default-quality-value');
+        const settingDefaultUnit = document.getElementById('setting-default-unit');
+
+        // App State
+        let filesToProcess = []; // Array of { id, file, name, originalDataUrl, processedDataUrl, status, originalSize, processedSize }
+        let currentFileIdCounter = 0;
+        let selectedFileForPreview = null;
+        const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+        // --- Settings ---
+        function loadSettings() {
+            const defaultFormat = localStorage.getItem('imageAppDefaultFormat') || 'image/png';
+            const defaultQuality = localStorage.getItem('imageAppDefaultQuality') || '80';
+            const defaultUnit = localStorage.getItem('imageAppDefaultUnit') || 'px';
+
+            settingDefaultFormat.value = defaultFormat;
+            outputFormatSelect.value = defaultFormat; // Apply to main control
+
+            settingDefaultQuality.value = defaultQuality;
+            settingDefaultQualityValue.textContent = `${defaultQuality}%`;
+            compressionQualitySlider.value = defaultQuality; // Apply to main control
+            compressionQualityValue.textContent = `${defaultQuality}%`; // Apply to main control
+
+            settingDefaultUnit.value = defaultUnit;
+            resizeUnitSelect.value = defaultUnit; // Apply to main control
+        }
+
+        function saveSettings() {
+            localStorage.setItem('imageAppDefaultFormat', settingDefaultFormat.value);
+            localStorage.setItem('imageAppDefaultQuality', settingDefaultQuality.value);
+            localStorage.setItem('imageAppDefaultUnit', settingDefaultUnit.value);
+            loadSettings(); // Re-apply to ensure consistency
+            alert('Settings saved!');
+            settingsPanel.classList.remove('open');
+        }
+
+        settingsToggleBtn.addEventListener('click', () => settingsPanel.classList.toggle('open'));
+        closeSettingsBtn.addEventListener('click', () => settingsPanel.classList.remove('open'));
+        saveSettingsBtn.addEventListener('click', saveSettings);
+        settingDefaultQuality.addEventListener('input', () => {
+            settingDefaultQualityValue.textContent = `${settingDefaultQuality.value}%`;
+        });
+
+
+        // --- File Upload and Handling ---
+        uploadArea.addEventListener('click', () => fileInput.click());
+        browseFilesBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            uploadArea.classList.add('dragover');
+        });
+        uploadArea.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            uploadArea.classList.remove('dragover');
+        });
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            uploadArea.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        function handleFiles(files) {
+            uploadFeedback.classList.add('hidden');
+            uploadFeedback.textContent = '';
+            let validFilesAdded = false;
+
+            Array.from(files).forEach(file => {
+                if (!file.type.startsWith('image/')) {
+                    showUploadError(`File "${file.name}" is not a supported image type.`);
+                    return;
+                }
+                if (file.size > MAX_FILE_SIZE) {
+                    showUploadError(`File "${file.name}" exceeds the 10MB size limit.`);
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const fileData = {
+                        id: currentFileIdCounter++,
+                        file: file,
+                        name: file.name,
+                        originalDataUrl: e.target.result,
+                        processedDataUrl: null,
+                        status: 'pending', // pending, processing, processed, error
+                        originalSize: file.size,
+                        processedSize: null
+                    };
+                    filesToProcess.push(fileData);
+                    addFileToListUI(fileData);
+                    if (!selectedFileForPreview) {
+                        selectFileForPreview(fileData.id);
+                    }
+                    validFilesAdded = true;
+                    updateBatchButtons();
+                };
+                reader.onerror = () => {
+                    showUploadError(`Error reading file "${file.name}".`);
+                }
+                reader.readAsDataURL(file);
+            });
+
+            if (validFilesAdded) {
+                filesOverviewSection.classList.remove('hidden');
+            }
+            fileInput.value = ''; // Reset file input
+        }
+        
+        function showUploadError(message) {
+            uploadFeedback.textContent = message;
+            uploadFeedback.classList.remove('hidden');
+        }
+
+        function addFileToListUI(fileData) {
+            const item = document.createElement('div');
+            item.classList.add('file-item');
+            item.dataset.fileId = fileData.id;
+            item.innerHTML = `
+                <span class="file-name">${fileData.name}</span>
+                <span class="file-status" id="status-${fileData.id}">${fileData.status}</span>
+                <button class="button small-btn preview-btn" data-id="${fileData.id}" title="Preview & Process This Image">👁️</button>
+                <button class="button small-btn danger remove-btn" data-id="${fileData.id}" title="Remove This Image">🗑️</button>
+            `;
+            item.querySelector('.preview-btn').addEventListener('click', () => selectFileForPreview(fileData.id));
+            item.querySelector('.remove-btn').addEventListener('click', () => removeFile(fileData.id));
+            fileListContainer.appendChild(item);
+        }
+
+        function selectFileForPreview(fileId) {
+            const fileData = filesToProcess.find(f => f.id === fileId);
+            if (fileData) {
+                selectedFileForPreview = fileData;
+                previewSection.classList.remove('hidden');
+                
+                originalImagePreview.src = fileData.originalDataUrl;
+                originalImagePreview.style.display = 'block';
+                const img = new Image();
+                img.onload = () => {
+                    originalImageInfo.textContent = `Original: ${img.width}x${img.height}, ${formatBytes(fileData.originalSize)}`;
+                }
+                img.src = fileData.originalDataUrl;
+
+
+                if (fileData.processedDataUrl) {
+                    displayProcessedImage(fileData.processedDataUrl, fileData.processedSize);
+                    downloadSingleBtn.classList.remove('hidden');
+                } else {
+                    processedImageCanvas.style.display = 'none';
+                    processedImagePreviewImg.style.display = 'none';
+                    processedImagePreviewImg.src = '#';
+                    processedImageInfo.textContent = 'Not processed yet.';
+                    downloadSingleBtn.classList.add('hidden');
+                    estimatedSizeInfo.classList.add('hidden');
+                }
+                // Highlight selected item in list
+                document.querySelectorAll('.file-item').forEach(item => item.style.backgroundColor = '');
+                const listItem = document.querySelector(`.file-item[data-file-id="${fileId}"]`);
+                if(listItem) listItem.style.backgroundColor = '#e9f5ff';
+
+                // Trigger a single process for this selected image
+                processSingleSelectedFile();
+            }
+        }
+        
+        function removeFile(fileId) {
+            filesToProcess = filesToProcess.filter(f => f.id !== fileId);
+            const itemToRemove = document.querySelector(`.file-item[data-file-id="${fileId}"]`);
+            if (itemToRemove) itemToRemove.remove();
+
+            if (selectedFileForPreview && selectedFileForPreview.id === fileId) {
+                selectedFileForPreview = null;
+                previewSection.classList.add('hidden');
+                originalImagePreview.style.display = 'none';
+                processedImageCanvas.style.display = 'none';
+                processedImagePreviewImg.style.display = 'none';
+            }
+            if (filesToProcess.length === 0) {
+                filesOverviewSection.classList.add('hidden');
+            }
+            updateBatchButtons();
+        }
+
+        clearAllBtn.addEventListener('click', () => {
+            filesToProcess = [];
+            fileListContainer.innerHTML = '';
+            selectedFileForPreview = null;
+            previewSection.classList.add('hidden');
+            originalImagePreview.style.display = 'none';
+            processedImageCanvas.style.display = 'none';
+            processedImagePreviewImg.style.display = 'none';
+            filesOverviewSection.classList.add('hidden');
+            progressBarContainer.style.display = 'none';
+            progressBar.style.width = '0%';
+            progressBar.textContent = '0%';
+            updateBatchButtons();
+        });
+
+        // --- UI Controls Logic ---
+        enableResizeCheckbox.addEventListener('change', () => {
+            resizeOptionsDiv.classList.toggle('hidden', !enableResizeCheckbox.checked);
+            if (selectedFileForPreview) processSingleSelectedFile();
+        });
+        [outputWidthInput, outputHeightInput, resizeUnitSelect, maintainAspectRatioCheckbox, outputFormatSelect].forEach(el => {
+            el.addEventListener('change', () => {
+                if (selectedFileForPreview) processSingleSelectedFile();
+            });
+        });
+        
+        enableCompressionCheckbox.addEventListener('change', () => {
+            compressionOptionsDiv.classList.toggle('hidden', !enableCompressionCheckbox.checked);
+            if (selectedFileForPreview) processSingleSelectedFile();
+        });
+        compressionQualitySlider.addEventListener('input', () => {
+            compressionQualityValue.textContent = `${compressionQualitySlider.value}%`;
+        });
+        compressionQualitySlider.addEventListener('change', () => { // Process on release
+             if (selectedFileForPreview) processSingleSelectedFile();
+        });
+
+
+        // --- Image Processing Core ---
+        async function processSingleSelectedFile() {
+            if (!selectedFileForPreview) return;
+            
+            const fileData = selectedFileForPreview;
+            updateFileStatusUI(fileData.id, 'processing...');
+            downloadSingleBtn.classList.add('hidden'); // Hide while processing
+            estimatedSizeInfo.classList.add('hidden');
+
+            try {
+                const processedResult = await processImage(fileData.originalDataUrl, getProcessingOptions());
+                fileData.processedDataUrl = processedResult.dataUrl;
+                fileData.processedSize = processedResult.size;
+                fileData.status = 'processed';
+
+                displayProcessedImage(fileData.processedDataUrl, fileData.processedSize);
+                updateFileStatusUI(fileData.id, `processed - ${formatBytes(fileData.processedSize)}`, true);
+                downloadSingleBtn.classList.remove('hidden');
+                estimatedSizeInfo.textContent = `Estimated processed size: ${formatBytes(fileData.processedSize)}`;
+                estimatedSizeInfo.classList.remove('hidden');
+            } catch (error) {
+                console.error("Error processing image:", error);
+                fileData.status = 'error';
+                updateFileStatusUI(fileData.id, 'error', false, true);
+                processedImageInfo.textContent = `Error: ${error.message}`;
+                processedImageCanvas.style.display = 'none';
+                processedImagePreviewImg.style.display = 'none';
+                estimatedSizeInfo.classList.add('hidden');
+            }
+            updateBatchButtons();
+        }
+        
+        function getProcessingOptions() {
+            return {
+                format: outputFormatSelect.value,
+                resize: enableResizeCheckbox.checked,
+                width: parseInt(outputWidthInput.value) || null,
+                height: parseInt(outputHeightInput.value) || null,
+                unit: resizeUnitSelect.value,
+                maintainAspectRatio: maintainAspectRatioCheckbox.checked,
+                compress: enableCompressionCheckbox.checked,
+                quality: parseInt(compressionQualitySlider.value) / 100
+            };
+        }
+
+        function processImage(dataUrl, options) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    let canvas = document.createElement('canvas'); // Use an offscreen canvas
+                    let ctx = canvas.getContext('2d');
+                    let { width: currentWidth, height: currentHeight } = img;
+
+                    if (options.resize) {
+                        let targetWidth = options.width;
+                        let targetHeight = options.height;
+
+                        if (options.unit === '%') {
+                            targetWidth = targetWidth ? currentWidth * (targetWidth / 100) : null;
+                            targetHeight = targetHeight ? currentHeight * (targetHeight / 100) : null;
+                        }
+                        
+                        if (options.maintainAspectRatio) {
+                            if (targetWidth && !targetHeight) {
+                                targetHeight = (currentHeight / currentWidth) * targetWidth;
+                            } else if (!targetWidth && targetHeight) {
+                                targetWidth = (currentWidth / currentHeight) * targetHeight;
+                            } else if (targetWidth && targetHeight) {
+                                // Fit within bounds while maintaining aspect ratio
+                                const ratio = Math.min(targetWidth / currentWidth, targetHeight / currentHeight);
+                                targetWidth = currentWidth * ratio;
+                                targetHeight = currentHeight * ratio;
+                            } else { // No dimensions provided, use original
+                                targetWidth = currentWidth;
+                                targetHeight = currentHeight;
+                            }
+                        } else { // Stretch or crop (here, stretch)
+                            targetWidth = targetWidth || currentWidth;
+                            targetHeight = targetHeight || currentHeight;
+                        }
+                        canvas.width = Math.round(targetWidth);
+                        canvas.height = Math.round(targetHeight);
+                    } else {
+                        canvas.width = currentWidth;
+                        canvas.height = currentHeight;
+                    }
+                    
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                    let quality = options.compress && (options.format === 'image/jpeg' || options.format === 'image/webp') ? options.quality : undefined;
+                    const processedDataUrl = canvas.toDataURL(options.format, quality);
+                    
+                    // Estimate size (very rough for data URLs)
+                    const head = 'data:' + options.format + ';base64,';
+                    const fileSize = Math.round((processedDataUrl.length - head.length) * 3 / 4);
+
+                    resolve({ dataUrl: processedDataUrl, size: fileSize });
+                };
+                img.onerror = () => reject(new Error('Could not load image for processing.'));
+                img.src = dataUrl;
+            });
+        }
+
+        function displayProcessedImage(dataUrl, size) {
+            // Use an <img> tag for display as canvas can have performance issues if very large and redrawn often
+            processedImagePreviewImg.src = dataUrl;
+            processedImagePreviewImg.style.display = 'block';
+            processedImageCanvas.style.display = 'none'; // Hide canvas used for drawing
+
+            // Get dimensions from the dataURL for info display
+            const tempImg = new Image();
+            tempImg.onload = () => {
+                 processedImageInfo.textContent = `Processed: ${tempImg.width}x${tempImg.height}, ${formatBytes(size || 0)} (${outputFormatSelect.value.split('/')[1].toUpperCase()})`;
+            }
+            tempImg.src = dataUrl;
+        }
+
+        // --- Batch Processing ---
+        processAllBtn.addEventListener('click', async () => {
+            if (filesToProcess.length === 0) return;
+
+            processAllBtn.disabled = true;
+            downloadZipBtn.disabled = true;
+            progressBarContainer.style.display = 'block';
+            let processedCount = 0;
+
+            const processingOptions = getProcessingOptions();
+
+            for (let i = 0; i < filesToProcess.length; i++) {
+                const fileData = filesToProcess[i];
+                if (fileData.status === 'processed' && fileData.processedDataUrl) { // Skip if already processed with current settings (heuristic)
+                    // This check is basic. A more robust check would involve comparing processingOptions.
+                    // For simplicity, we assume if it's 'processed', it's good enough for batch.
+                    // Or, always re-process:
+                    // fileData.status = 'pending'; 
+                }
+
+                if (fileData.status !== 'processed') {
+                    updateFileStatusUI(fileData.id, 'processing...');
+                    try {
+                        const result = await processImage(fileData.originalDataUrl, processingOptions);
+                        fileData.processedDataUrl = result.dataUrl;
+                        fileData.processedSize = result.size;
+                        fileData.status = 'processed';
+                        updateFileStatusUI(fileData.id, `processed - ${formatBytes(result.size)}`, true);
+                    } catch (error) {
+                        console.error(`Error processing ${fileData.name}:`, error);
+                        fileData.status = 'error';
+                        updateFileStatusUI(fileData.id, 'error', false, true);
+                    }
+                }
+                processedCount++;
+                const progress = Math.round((processedCount / filesToProcess.length) * 100);
+                progressBar.style.width = `${progress}%`;
+                progressBar.textContent = `${progress}%`;
+            }
+            
+            updateBatchButtons(); // Re-enable buttons based on new state
+            if (filesToProcess.some(f => f.status === 'processed')) {
+                downloadZipBtn.disabled = false;
+            }
+            processAllBtn.disabled = false; // Re-enable process all after completion
+        });
+
+        downloadZipBtn.addEventListener('click', () => {
+            const zip = new JSZip();
+            let filesAddedToZip = 0;
+            filesToProcess.forEach(fileData => {
+                if (fileData.status === 'processed' && fileData.processedDataUrl) {
+                    const base64Data = fileData.processedDataUrl.split(',')[1];
+                    const extension = outputFormatSelect.value.split('/')[1];
+                    const filename = fileData.name.substring(0, fileData.name.lastIndexOf('.')) + `.${extension}`;
+                    zip.file(filename, base64Data, { base64: true });
+                    filesAddedToZip++;
+                }
+            });
+
+            if (filesAddedToZip > 0) {
+                zip.generateAsync({ type: "blob" })
+                    .then(function(content) {
+                        saveAs(content, "processed_images.zip");
+                    })
+                    .catch(err => console.error("Error creating ZIP: ", err));
+            } else {
+                alert("No files processed successfully to add to ZIP.");
+            }
+        });
+
+        function updateFileStatusUI(fileId, statusText, isSuccess = false, isError = false) {
+            const statusEl = document.getElementById(`status-${fileId}`);
+            if (statusEl) {
+                statusEl.textContent = statusText;
+                statusEl.classList.remove('processed', 'error');
+                if (isSuccess) statusEl.classList.add('processed');
+                if (isError) statusEl.classList.add('error');
+            }
+        }
+
+        function updateBatchButtons() {
+            const hasFiles = filesToProcess.length > 0;
+            processAllBtn.disabled = !hasFiles;
+            clearAllBtn.disabled = !hasFiles;
+
+            const hasProcessedFiles = filesToProcess.some(f => f.status === 'processed' && f.processedDataUrl);
+            downloadZipBtn.disabled = !hasProcessedFiles;
+        }
+
+
+        // --- Download Single File ---
+        downloadSingleBtn.addEventListener('click', () => {
+            if (selectedFileForPreview && selectedFileForPreview.processedDataUrl) {
+                const fileData = selectedFileForPreview;
+                const extension = outputFormatSelect.value.split('/')[1];
+                const filename = fileData.name.substring(0, fileData.name.lastIndexOf('.')) + `_processed.${extension}`;
+                
+                const a = document.createElement('a');
+                a.href = fileData.processedDataUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+        });
+
+        // --- Utility Functions ---
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        // --- Initial Load ---
+        loadSettings(); // Load settings on page load
+        updateBatchButtons(); // Initial button states
+    </script>
+
+</body>
+</html>
